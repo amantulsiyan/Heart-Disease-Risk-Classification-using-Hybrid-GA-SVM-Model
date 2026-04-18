@@ -68,12 +68,12 @@ function MetricsTab({ cmp }) {
         {[
           { label: 'Baseline accuracy', v: cmp.baseline.accuracy, color: 'blue' },
           { label: 'GA-SVM accuracy',   v: cmp.gasvm.accuracy,    color: 'accent' },
-          { label: 'Baseline F1',       v: cmp.baseline.f1,       color: 'blue' },
           { label: 'GA-SVM F1',         v: cmp.gasvm.f1,          color: 'accent' },
+          { label: 'GA-MLP accuracy',   v: cmp.gamlp?.accuracy,   color: 'green' },
         ].map(({ label, v, color }) => (
           <div className="metric-card" key={label}>
             <div className="metric-label">{label}</div>
-            <div className={`metric-value ${color}`}>{(v * 100).toFixed(1)}%</div>
+            <div className={`metric-value ${color}`}>{v != null ? (v * 100).toFixed(1) + '%' : '—'}</div>
           </div>
         ))}
       </div>
@@ -82,28 +82,24 @@ function MetricsTab({ cmp }) {
         <div className="card-title">Detailed comparison</div>
         <table className="tbl">
           <thead>
-            <tr><th>Metric</th><th>Baseline SVM</th><th>GA-SVM</th><th>Improvement</th><th>Winner</th></tr>
+            <tr><th>Metric</th><th>Baseline SVM</th><th>GA-SVM</th>{cmp.gamlp && <th style={{color:'#55A868'}}>GA-MLP</th>}<th>Winner</th></tr>
           </thead>
           <tbody>
             {rows.map(([label, key, pct]) => {
               const bv = cmp.baseline[key]
               const gv = cmp.gasvm[key]
-              const diff = gv - bv
-              const fmt = v => pct ? `${(v*100).toFixed(2)}%` : v
-              const win = pct ? diff > 0 : diff < 0   // fewer features = GA wins
+              const mv = cmp.gamlp?.[key]
+              const fmt = v => v != null ? (pct ? `${(v*100).toFixed(2)}%` : v) : '—'
+              const best = pct ? Math.max(bv, gv, mv ?? -Infinity) : Math.min(bv, gv, mv ?? Infinity)
+              const winner = best === mv ? 'GA-MLP' : best === gv ? 'GA-SVM' : 'Baseline'
+              const winColor = winner === 'GA-MLP' ? '#55A868' : winner === 'GA-SVM' ? 'var(--accent)' : 'var(--accent2)'
               return (
                 <tr key={key}>
                   <td style={{ fontWeight: 500 }}>{label}</td>
                   <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent2)' }}>{fmt(bv)}</td>
                   <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)'  }}>{fmt(gv)}</td>
-                  <td style={{ fontFamily: 'Space Mono, monospace', color: diff >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                    {diff >= 0 ? '+' : ''}{pct ? `${(diff*100).toFixed(2)}%` : diff.toFixed(4)}
-                  </td>
-                  <td>
-                    <span className="badge" style={{ background: win ? 'rgba(240,136,62,0.15)' : 'rgba(88,166,255,0.15)', color: win ? 'var(--accent)' : 'var(--accent2)' }}>
-                      {win ? 'GA-SVM' : 'Baseline'}
-                    </span>
-                  </td>
+                  {cmp.gamlp && <td style={{ fontFamily: 'Space Mono, monospace', color: '#55A868' }}>{fmt(mv)}</td>}
+                  <td><span className="badge" style={{ background: `${winColor}22`, color: winColor }}>{winner}</span></td>
                 </tr>
               )
             })}
@@ -174,13 +170,13 @@ function ROCTab({ cmp }) {
 
   const bPath = pathFrom(cmp.baseline.roc)
   const gPath = pathFrom(cmp.gasvm.roc)
+  const mPath = cmp.gamlp ? pathFrom(cmp.gamlp.roc) : ''
   const diagonal = `M${sx(0)},${sy(0)} L${sx(1)},${sy(1)}`
 
   return (
     <div className="card">
       <div className="card-title">ROC curves — receiver operating characteristic</div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: W }}>
-        {/* Grid */}
         {[0,.25,.5,.75,1].map(t => (
           <g key={t}>
             <line x1={sx(0)} y1={sy(t)} x2={sx(1)} y2={sy(t)} stroke="var(--border)" strokeWidth="0.5"/>
@@ -189,19 +185,20 @@ function ROCTab({ cmp }) {
             <text x={sx(t)}   y={sy(0)+14} textAnchor="middle" fontSize="9" fill="var(--muted)">{t}</text>
           </g>
         ))}
-        {/* Diagonal */}
         <path d={diagonal} fill="none" stroke="var(--muted)" strokeWidth="1" strokeDasharray="4 3"/>
-        {/* Curves */}
         <path d={bPath} fill="none" stroke="var(--accent2)" strokeWidth="2.5"/>
         <path d={gPath} fill="none" stroke="var(--accent)"  strokeWidth="2.5"/>
-        {/* Axis labels */}
+        {mPath && <path d={mPath} fill="none" stroke="#55A868" strokeWidth="2.5"/>}
         <text x={W/2} y={H-4} textAnchor="middle" fontSize="11" fill="var(--muted)">False Positive Rate</text>
         <text x={12}  y={H/2} textAnchor="middle" fontSize="11" fill="var(--muted)" transform={`rotate(-90,12,${H/2})`}>True Positive Rate</text>
-        {/* Legend */}
         <line x1={P} y1={P-10} x2={P+24} y2={P-10} stroke="var(--accent2)" strokeWidth="2.5"/>
         <text x={P+28} y={P-6} fontSize="11" fill="var(--muted)">Baseline AUC={cmp.baseline.auc}</text>
         <line x1={P} y1={P+5} x2={P+24} y2={P+5} stroke="var(--accent)" strokeWidth="2.5"/>
         <text x={P+28} y={P+9} fontSize="11" fill="var(--muted)">GA-SVM AUC={cmp.gasvm.auc}</text>
+        {cmp.gamlp && <>
+          <line x1={P} y1={P+20} x2={P+24} y2={P+20} stroke="#55A868" strokeWidth="2.5"/>
+          <text x={P+28} y={P+24} fontSize="11" fill="var(--muted)">GA-MLP AUC={cmp.gamlp.auc}</text>
+        </>}
       </svg>
     </div>
   )
