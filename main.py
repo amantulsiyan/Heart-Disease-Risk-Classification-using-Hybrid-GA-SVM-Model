@@ -120,6 +120,20 @@ def get_gasvm():
     return load_json(RESULTS_DIR / "ga_svm_results.json")
 
 
+@app.get("/api/results/gamlp")
+def get_gamlp():
+    data = load_json(RESULTS_DIR / "ga_mlp_results.json")
+    return data.get("results", {})
+
+
+@app.get("/api/results/gamlp-history")
+def get_gamlp_history():
+    data = load_json(RESULTS_DIR / "ga_mlp_results.json")
+    return {"history": data.get("history", []),
+            "best_chromosome": data.get("best_chromosome", {}),
+            "config": data.get("config", {})}
+
+
 @app.get("/api/results/ga-history")
 def get_ga_history():
     results = load_json(RESULTS_DIR / "ga_results.json")
@@ -134,6 +148,11 @@ def get_comparison():
     gasvm    = load_json(RESULTS_DIR / "ga_svm_results.json")
     ga_res   = load_json(RESULTS_DIR / "ga_results.json")
     meta     = load_json(DATA_DIR    / "meta.json")
+    try:
+        gamlp_data = load_json(RESULTS_DIR / "ga_mlp_results.json")
+        gamlp_res  = gamlp_data.get("results", {})
+    except Exception:
+        gamlp_res  = None
 
     best_chr = ga_res.get("best_chromosome", {})
     history  = ga_res.get("history", [])
@@ -163,6 +182,21 @@ def get_comparison():
         "ga_history":    history,
         "feature_names": meta.get("feature_names", []),
         "best_chromosome": best_chr,
+        "gamlp": {
+            "accuracy":     gamlp_res.get("accuracy"),
+            "f1":           gamlp_res.get("f1"),
+            "auc":          gamlp_res.get("auc"),
+            "n_features":   gamlp_res.get("n_features_used"),
+            "train_time_s": gamlp_res.get("train_time_s"),
+            "cm":           gamlp_res.get("cm"),
+            "roc":          gamlp_res.get("roc"),
+            "feature_mask": gamlp_res.get("feature_mask"),
+            "lr":           gamlp_res.get("lr"),
+            "hidden_size":  gamlp_res.get("hidden_size"),
+            "depth":        gamlp_res.get("depth"),
+            "dropout":      gamlp_res.get("dropout"),
+            "device":       gamlp_res.get("device"),
+        } if gamlp_res else None,
     }
 
 
