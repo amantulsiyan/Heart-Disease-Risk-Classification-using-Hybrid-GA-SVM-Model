@@ -1,13 +1,30 @@
 # CardioGA — Hybrid GA-SVM/MLP Heart Disease Classifier
 
-A hybrid machine learning system that uses a **Genetic Algorithm (GA)** to simultaneously perform feature selection and model hyperparameter optimisation for heart disease prediction on the UCI Cleveland dataset.
+A hybrid machine learning system that uses a **Genetic Algorithm (GA)** to simultaneously perform feature selection and model hyperparameter optimisation for heart disease prediction on the combined UCI Heart Disease dataset (all 4 sub-datasets: Cleveland, Hungarian, Switzerland, VA Long Beach — 920 patients total).
 
-Two hybrid models are implemented and compared against a plain SVM baseline:
+Three models are implemented and compared:
 
+- **Baseline SVM** — plain RBF-SVM on all 13 features, no tuning
 - **GA-SVM** — GA selects features and tunes `C` and `γ` for an RBF-SVM
 - **GA-MLP** — GA selects features and tunes learning rate, hidden size, depth, and dropout for a PyTorch MLP trained on GPU
 
 Includes a FastAPI backend and a React + Vite frontend dashboard.
+
+---
+
+## Why all 4 UCI sub-datasets?
+
+The original Cleveland-only dataset has 303 patients — sufficient for SVM but too small for a neural network (roughly 82 training samples per class after splitting). To give the GA-MLP a fair evaluation, all 4 UCI Heart Disease sub-datasets are merged:
+
+| Sub-dataset | Patients | Disease cases |
+|---|---|---|
+| Cleveland | 303 | 139 |
+| Hungarian | 294 | 106 |
+| Switzerland | 123 | 115 |
+| VA Long Beach | 200 | 149 |
+| **Combined** | **920** | **509** |
+
+All 4 sub-datasets share the same 13 features and target format. Missing values (heavy in `ca`, `thal`, `slope` for non-Cleveland sets) are imputed with column mode across the full combined dataset before splitting.
 
 ---
 
@@ -18,18 +35,23 @@ Plain SVM has two weaknesses on clinical data: irrelevant features add noise, an
 ### GA-SVM chromosome (15 genes)
 ```
 [ f1 f2 f3 ... f13 | C_idx | gamma_idx ]
-  ← 13 feature bits →  ← 2 param indices →
+  <- 13 feature bits ->  <- 2 param indices ->
 ```
 
 ### GA-MLP chromosome (17 genes)
 ```
 [ f1 f2 f3 ... f13 | lr_idx | hidden_idx | dropout_idx | depth_idx ]
-  ← 13 feature bits →  ←       4 architecture indices        →
+  <- 13 feature bits ->  <-       4 architecture indices        ->
 ```
 
 Each chromosome is evaluated by training the model on the selected features with the decoded hyperparameters and measuring 5-fold stratified cross-validation F1 score minus a sparsity penalty. The GA evolves the population over generations until it converges. The best chromosome is then used to train the final model on the full training set.
 
-For GA-MLP, each fitness call trains a PyTorch MLP for **200 epochs on GPU** across 5 folds — making it a compute-heavy experiment (~4 hours on a high-end GPU for 30 individuals × 40 generations).
+For GA-MLP, each fitness call trains a PyTorch MLP for **200 epochs on GPU** across 5 folds — making it a compute-heavy experiment (~4 hours on a high-end GPU for 30 individuals x 40 generations).
+
+**Total GA-MLP training runs:**
+```
+30 pop x 40 gen x 5 folds x 200 epochs = 1,200,000 epoch-equivalents
+```
 
 ---
 
@@ -37,28 +59,28 @@ For GA-MLP, each fitness call trains a PyTorch MLP for **200 epochs on GPU** acr
 
 ```
 Hybrid SVM-GA/
-│
-├── prepare_data.py        # Downloads UCI dataset, cleans, scales, saves artifacts
-├── baseline_svm.py        # Trains plain SVM on all 13 features (comparison baseline)
-├── genetic_algorithm.py   # GA engine for SVM: chromosome, fitness, selection, crossover, mutation
-├── ga_svm_trainer.py      # Decodes best GA-SVM chromosome, trains final model, produces plots
-├── ga_mlp_trainer.py      # GA engine for MLP: PyTorch GPU training inside fitness function
-├── cuda_accelerator.py    # GPU fitness evaluators for GA-SVM: CPUEvaluator, CuMLEvaluator, CuPyKernelEvaluator
-├── main.py                # FastAPI backend — all API routes + SSE streaming for live training
-│
-├── App.jsx                # React app shell with sidebar navigation
-├── Dashboard.jsx          # Overview: 3-model metric cards, comparison table, convergence chart
-├── Predict.jsx            # Patient input sliders → dual-model risk prediction
-├── Training.jsx           # Live GA training: config sliders, real-time chart, log terminal
-├── Results.jsx            # Full results: metrics, confusion matrices, ROC curves, feature table
-├── api.js                 # All fetch calls to the FastAPI backend, including SSE stream handler
-├── main.jsx               # React entry point
-├── index.html             # HTML shell
-├── index.css              # Global styles
-├── vite.config.js         # Vite config with /api proxy to FastAPI
-│
-├── requirements.txt       # Python dependencies
-└── package.json           # Node dependencies
+|
+|-- prepare_data.py        # Downloads + merges all 4 UCI datasets, cleans, scales, saves artifacts
+|-- baseline_svm.py        # Trains plain SVM on all 13 features (comparison baseline)
+|-- genetic_algorithm.py   # GA engine for SVM: chromosome, fitness, selection, crossover, mutation
+|-- ga_svm_trainer.py      # Decodes best GA-SVM chromosome, trains final model, produces plots
+|-- ga_mlp_trainer.py      # GA engine for MLP: PyTorch GPU training inside fitness function
+|-- cuda_accelerator.py    # GPU fitness evaluators: CPUEvaluator, CuMLEvaluator, CuPyKernelEvaluator
+|-- main.py                # FastAPI backend: all API routes + SSE streaming for live training
+|
+|-- App.jsx                # React app shell with sidebar navigation
+|-- Dashboard.jsx          # Overview: 3-model metric cards, comparison table, convergence chart
+|-- Predict.jsx            # Patient input sliders -> dual-model risk prediction
+|-- Training.jsx           # Live GA training: config sliders, real-time chart, log terminal
+|-- Results.jsx            # Full results: metrics, confusion matrices, ROC curves, feature table
+|-- api.js                 # All fetch calls to the FastAPI backend, including SSE stream handler
+|-- main.jsx               # React entry point
+|-- index.html             # HTML shell
+|-- index.css              # Global styles
+|-- vite.config.js         # Vite config with /api proxy to FastAPI
+|
+|-- requirements.txt       # Python dependencies
+`-- package.json           # Node dependencies
 ```
 
 After running the training scripts, two directories are created automatically:
@@ -105,39 +127,52 @@ Run the steps in order. Each script saves its outputs for the next step.
 ```bash
 python prepare_data.py
 ```
-Downloads the UCI Cleveland dataset, imputes 6 missing values in `ca` and `thal` with column mode, normalises all features with `StandardScaler`, and saves stratified 80/20 train/test splits to `data/`.
+Downloads and merges all 4 UCI Heart Disease sub-datasets (Cleveland, Hungarian, Switzerland, VA Long Beach) into a single 920-patient dataset. Imputes missing values across all columns with column mode, normalises all features with `StandardScaler`, and saves a stratified 80/20 train/test split to `data/`.
+
+Expected output:
+```
+[data] cleveland     — 303 rows
+[data] hungarian     — 294 rows
+[data] switzerland   — 123 rows
+[data] va            — 200 rows
+[data] Combined: 920 rows from 4 datasets
+[preprocess] Train: (736, 13), Test: (184, 13)
+[preprocess] Class balance (train) — 0: 329, 1: 407
+```
 
 ### Step 2 — Baseline SVM
 ```bash
 python baseline_svm.py
 ```
-Trains a plain RBF-SVM (`C=1.0`, `gamma=scale`) on all 13 features. Saves metrics, confusion matrix PNG, and ROC curve PNG to `results/`. Achieves ~85% accuracy — this is the comparison baseline.
+Trains a plain RBF-SVM (`C=1.0`, `gamma=scale`) on all 13 features using the full 736-sample training set. Evaluates on the 184-sample test set. Saves accuracy, F1, AUC-ROC, confusion matrix PNG, and ROC curve PNG to `results/`. This is the comparison baseline — record these numbers for the paper.
 
 ### Step 3 — GA-SVM
 ```bash
 python genetic_algorithm.py
 ```
-Runs the GA (default: 60 individuals × 80 generations) to find the optimal feature subset and SVM hyperparameters. Saves the best chromosome, full generation history, and convergence plot to `results/`. Takes ~4 minutes on CPU.
+Runs the GA (default: 60 individuals x 80 generations) to find the optimal feature subset and SVM hyperparameters. Each fitness call runs 5-fold stratified CV on the training set only — test data is never seen during the GA loop. Saves the best chromosome, full generation history, and convergence plot to `results/`. Takes ~4-10 minutes on CPU.
 
 ### Step 4 — GA-SVM final model
 ```bash
 python ga_svm_trainer.py
 ```
-Decodes the best chromosome from Step 3, retrains the final SVM on the full training set, evaluates on the test set, and saves a 4-panel comparison figure.
+Decodes the best chromosome from Step 3, retrains the final SVM on the full 736-sample training set with the GA-selected features and hyperparameters, evaluates on the 184-sample test set, and saves a 4-panel comparison figure (metrics, confusion matrix, ROC curves, feature selection bar).
 
-### Step 5 — GA-MLP (GPU required for full run)
+### Step 5 — GA-MLP (GPU required)
 ```bash
 python ga_mlp_trainer.py
 ```
-Runs the GA (default: 30 individuals × 40 generations) where each fitness call trains a PyTorch MLP for 200 epochs on GPU across 5 CV folds. Saves the best chromosome, trained model weights (`.pt`), convergence plot, and 3-model comparison figure.
+Runs the GA (default: 30 individuals x 40 generations) where each fitness call trains a PyTorch MLP for 200 epochs on GPU across 5 CV folds. Saves the best chromosome, trained model weights (`.pt`), convergence plot, and 3-model comparison figure to `results/`.
 
-**Expected runtime:** ~4 hours on a high-end GPU (RTX 3090 / A100). On CPU this will take significantly longer and is not recommended.
+**This step requires an NVIDIA GPU with CUDA 11.8+. Do not run on CPU — it will take days.**
 
 When the GPU is detected, the script prints:
 ```
 [device] Using: cuda
 [device] GPU: NVIDIA GeForce RTX XXXX
 ```
+
+Expected runtime: ~4 hours on RTX 3090 / A100.
 
 ### Step 6 — Start the API
 ```bash
@@ -154,7 +189,7 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## GA-SVM configuration
 
-Key parameters in `genetic_algorithm.py` → `GAConfig`:
+Key parameters in `genetic_algorithm.py` -> `GAConfig`:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -169,13 +204,13 @@ Key parameters in `genetic_algorithm.py` → `GAConfig`:
 
 Hyperparameter search grids:
 - **C**: `[0.01, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0]`
-- **γ**: `[0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]`
+- **gamma**: `[0.0001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]`
 
 ---
 
 ## GA-MLP configuration
 
-Key parameters in `ga_mlp_trainer.py` → `GAMLPConfig`:
+Key parameters in `ga_mlp_trainer.py` -> `GAMLPConfig`:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -192,12 +227,7 @@ MLP hyperparameter search grids:
 - **Dropout**: `[0.0, 0.1, 0.2, 0.3, 0.4]`
 - **Depth**: `[1, 2, 3, 4]` hidden layers
 
-Each MLP uses `BatchNorm → ReLU → Dropout` per layer, `BCEWithLogitsLoss`, Adam optimiser with `weight_decay=1e-4`, and cosine annealing LR scheduler over 200 epochs.
-
-**Total training runs per full GA-MLP execution:**
-```
-30 pop × 40 gen × 5 folds × 200 epochs = 1,200,000 epoch-equivalents
-```
+Each MLP uses `BatchNorm -> ReLU -> Dropout` per layer, `BCEWithLogitsLoss`, Adam optimiser with `weight_decay=1e-4`, and cosine annealing LR scheduler over 200 epochs.
 
 ---
 
@@ -222,8 +252,7 @@ PyTorch tensors are moved to `DEVICE` (auto-detected `cuda` or `cpu`) inside eac
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 X_tr = torch.tensor(X_sub[tr_idx]).to(DEVICE)
 ```
-
-The MLP model, optimizer, and all forward/backward passes run entirely on GPU.
+The MLP model, optimiser, and all forward/backward passes run entirely on GPU.
 
 ---
 
@@ -255,30 +284,32 @@ The MLP model, optimizer, and all forward/backward passes run entirely on GPU.
 
 ---
 
-## Results (actual run)
+## Dataset
 
-Trained on UCI Cleveland dataset, 242 train / 61 test samples:
+Combined UCI Heart Disease dataset — 920 patients, 13 features, binary target (0 = no disease, 1 = disease).
+Source: [UCI ML Repository](https://archive.ics.uci.edu/ml/datasets/heart+disease)
 
-| Metric | Baseline SVM | GA-SVM | GA-MLP |
-|---|---|---|---|
-| Accuracy | 85.25% | 85.25% | run on GPU |
-| F1 Score | 0.8475 | 0.8475 | run on GPU |
-| AUC-ROC | 0.9437 | 0.9340 | run on GPU |
-| Features used | 13/13 | 8/13 | TBD/13 |
-| Train time | 0.018s | 237s (GA) | ~4 hours (GPU) |
-| Device | CPU | CPU | CUDA |
+Four sub-datasets are merged: Cleveland (303), Hungarian (294), Switzerland (123), VA Long Beach (200).
+Missing values are imputed with column mode. The non-Cleveland datasets have heavy missingness in `ca`, `thal`, and `slope` — all imputed before splitting.
 
-**GA-SVM selected features:** age, sex, cp, restecg, exang, slope, ca, thal
-**GA-SVM optimized hyperparameters:** C=100.0, γ=0.005
+Train/test split: 736 train / 184 test (stratified 80/20).
 
 ---
 
-## Dataset
+## Results
 
-UCI Cleveland Heart Disease dataset — 303 patients, 13 features, binary target (0 = no disease, 1 = disease).
-Source: [UCI ML Repository](https://archive.ics.uci.edu/ml/datasets/heart+disease)
+Trained on combined UCI dataset, 736 train / 184 test samples:
 
-6 missing values in `ca` (4) and `thal` (2) columns are imputed with the column mode.
+| Metric | Baseline SVM | GA-SVM | GA-MLP |
+|---|---|---|---|
+| Accuracy | TBD | TBD | run on GPU |
+| F1 Score | TBD | TBD | run on GPU |
+| AUC-ROC | TBD | TBD | run on GPU |
+| Features used | 13/13 | TBD/13 | TBD/13 |
+| Train time | ~0.1s | ~10 min (GA) | ~4 hours (GPU) |
+| Device | CPU | CPU | CUDA |
+
+> Results will be updated after running Steps 2-5 on the GPU machine.
 
 ---
 
