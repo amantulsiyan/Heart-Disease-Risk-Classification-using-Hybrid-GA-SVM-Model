@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getComparison, getGPUInfo } from '../utils/api'
+import { getComparison, getGPUInfo } from './api'
 
 export default function Dashboard() {
   const [cmp, setCmp]       = useState(null)

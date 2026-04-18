@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { predict, getMeta } from '../utils/api'
+import { predict, getMeta } from './api'
 
 const DEFAULTS = {
   age: 55, sex: 1, cp: 1, trestbps: 130, chol: 250,

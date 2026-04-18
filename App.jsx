@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Predict from './pages/Predict'
-import Training from './pages/Training'
-import Results from './pages/Results'
+import Dashboard from './Dashboard'
+import Predict from './Predict'
+import Training from './Training'
+import Results from './Results'
 import './index.css'
 
 export default function App() {

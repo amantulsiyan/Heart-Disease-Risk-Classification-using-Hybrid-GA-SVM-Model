@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getComparison } from '../utils/api'
+import { getComparison } from './api'
 
 export default function Results() {
   const [cmp, setCmp]   = useState(null)

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { streamGATraining, trainBaseline } from '../utils/api'
+import { streamGATraining, trainBaseline } from './api'
 
 export default function Training() {
   const [cfg, setCfg]             = useState({ pop_size: 60, n_generations: 80, mutation_rate: 0.02, crossover_rate: 0.80, use_gpu: false })
