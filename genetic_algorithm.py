@@ -1,14 +1,15 @@
 """
-Day 3–4 — Genetic Algorithm Engine
-Full GA implementation for simultaneous feature selection
-and SVM hyperparameter optimisation.
+GA Engine — GPU-Accelerated Genetic Algorithm for SVM optimisation.
 
 Chromosome layout (15 genes):
   [0..12]  — binary feature mask (1 = use this feature)
   [13]     — C index into C_VALUES grid
   [14]     — gamma index into GAMMA_VALUES grid
 
-Run:  python backend/models/genetic_algorithm.py
+Fitness evaluation is delegated to FitnessEvaluator which auto-selects
+the best available backend: cuML (GPU) > CuPy (GPU) > CPU (joblib).
+
+Run:  python genetic_algorithm.py
 """
 
 import numpy as np
@@ -44,12 +45,13 @@ class GAConfig:
     crossover_rate:  float = 0.80
     mutation_rate:   float = 0.02
     tournament_k:    int   = 3
-    elitism_n:       int   = 2        # best N chromosomes survive unchanged
+    elitism_n:       int   = 2
     cv_folds:        int   = 5
-    feature_penalty: float = 0.001    # penalise using too many features
-    min_features:    int   = 2        # enforce at least N features selected
+    feature_penalty: float = 0.001
+    min_features:    int   = 2
     random_seed:     int   = 42
-    n_jobs:          int   = -1       # -1 = all CPU cores
+    n_jobs:          int   = -1
+    evaluator_mode:  str   = "auto"   # "auto" | "cuml" | "cupy" | "cpu"
 
 
 @dataclass
@@ -160,14 +162,19 @@ class GeneticAlgorithm:
 
     def evaluate_population(self, X_train, y_train):
         """
-        CPU-parallel evaluation using joblib.
-        Replace the inner SVC with cuML SVC for GPU acceleration.
+        Delegates to FitnessEvaluator which auto-selects
+        cuML (GPU) > CuPy (GPU) > CPU based on available hardware.
+        Data is uploaded to GPU once inside the evaluator before the GA loop.
         """
-        from joblib import Parallel, delayed
-
-        fitnesses = Parallel(n_jobs=self.cfg.n_jobs, prefer="threads")(
-            delayed(self._compute_fitness)(ch, X_train, y_train)
-            for ch in self.population
+        from cuda_accelerator import FitnessEvaluator
+        if not hasattr(self, '_evaluator'):
+            self._evaluator = FitnessEvaluator(
+                mode=self.cfg.evaluator_mode,
+                cv_folds=self.cfg.cv_folds,
+                random_seed=self.cfg.random_seed,
+            )
+        fitnesses = self._evaluator.evaluate_population(
+            self.population, X_train, y_train
         )
         for ch, fit in zip(self.population, fitnesses):
             ch.fitness = fit
@@ -257,12 +264,12 @@ class GeneticAlgorithm:
                                              n_features=best_ch.n_features)
 
             stats = GenerationStats(
-                generation    = gen + 1,
-                best_fitness  = float(best_ch.fitness),
-                avg_fitness   = float(np.mean(fitnesses)),
-                worst_fitness = float(min(fitnesses)),
+                generation      = gen + 1,
+                best_fitness    = float(best_ch.fitness),
+                avg_fitness     = float(np.mean(fitnesses)),
+                worst_fitness   = float(min(fitnesses)),
                 best_n_features = best_ch.n_selected(),
-                elapsed_s     = round(time.perf_counter() - t_gen, 3),
+                elapsed_s       = round(time.perf_counter() - t_gen, 3),
             )
             self.history.append(stats)
 
@@ -271,6 +278,7 @@ class GeneticAlgorithm:
                 f"Best: {stats.best_fitness:.4f} | "
                 f"Avg: {stats.avg_fitness:.4f} | "
                 f"Features: {stats.best_n_features}/13 | "
+                f"Evaluator: {self.cfg.evaluator_mode} | "
                 f"Time: {stats.elapsed_s}s"
             )
 
@@ -311,9 +319,12 @@ if __name__ == "__main__":
     X_train = np.load(DATA_DIR / "X_train.npy")
     y_train = np.load(DATA_DIR / "y_train.npy")
 
-    cfg = GAConfig(pop_size=60, n_generations=80)
+    cfg = GAConfig(pop_size=60, n_generations=80, evaluator_mode="auto")
     ga  = GeneticAlgorithm(cfg)
     best = ga.run(X_train, y_train)
+
+    from cuda_accelerator import GPU_INFO
+    print(f"\n[device] Evaluator: {cfg.evaluator_mode} | GPU: {GPU_INFO}")
 
     print("\n── Best chromosome ─────────────────")
     print(json.dumps(best.to_dict(), indent=2))
