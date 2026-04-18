@@ -349,6 +349,44 @@ def train_final_model(best: MLPChromosome, X_train, y_train, X_test, y_test):
     }
 
 
+def ten_fold_cv_mlp(best, X_train, y_train, X_test, y_test):
+    """Fix 4: 10-fold stratified CV on full dataset for paper-quality numbers."""
+    mask   = best.feature_mask()
+    X_full = np.concatenate([X_train, X_test])[:, mask].astype(np.float32)
+    y_full = np.concatenate([y_train, y_test])
+    skf    = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+    acc_s, f1_s, auc_s = [], [], []
+
+    for tr, vl in skf.split(X_full, y_full):
+        X_tr = torch.tensor(X_full[tr]).to(DEVICE)
+        y_tr = torch.tensor(y_full[tr].astype(np.float32)).to(DEVICE)
+        X_vl = torch.tensor(X_full[vl]).to(DEVICE)
+        try:
+            score = train_fold(X_tr, y_tr, X_vl,
+                               torch.tensor(y_full[vl].astype(np.float32)).to(DEVICE),
+                               best.hidden(), best.depth(), best.dropout(), best.lr())
+            f1_s.append(score)
+            # get probs for acc and auc
+            model = build_mlp(X_tr.shape[1], best.hidden(), best.depth(), best.dropout()).to(DEVICE)
+            model.eval()
+            with torch.no_grad():
+                probs = torch.sigmoid(model(X_vl).squeeze(1)).cpu().numpy()
+            preds = (probs >= 0.5).astype(int)
+            acc_s.append(accuracy_score(y_full[vl], preds))
+            auc_s.append(roc_auc_score(y_full[vl], probs))
+        except Exception:
+            acc_s.append(0.0); f1_s.append(0.0); auc_s.append(0.0)
+
+    return {
+        "cv10_accuracy_mean": round(float(np.mean(acc_s)), 4),
+        "cv10_accuracy_std":  round(float(np.std(acc_s, ddof=1)), 4),
+        "cv10_f1_mean":       round(float(np.mean(f1_s)), 4),
+        "cv10_f1_std":        round(float(np.std(f1_s, ddof=1)), 4),
+        "cv10_auc_mean":      round(float(np.mean(auc_s)), 4),
+        "cv10_auc_std":       round(float(np.std(auc_s, ddof=1)), 4),
+    }
+
+
 # ── Comparison plot ───────────────────────────────────────────────────────────
 
 def comparison_plot(baseline, ga_svm, ga_mlp, feature_names, mask, out_path):
@@ -459,6 +497,14 @@ if __name__ == "__main__":
 
     # Train final model on full training set
     model, mask, results = train_final_model(best, X_train, y_train, X_test, y_test)
+
+    # Fix 4: 10-fold CV for paper-quality numbers
+    log.info("[10-fold CV] Running 10-fold CV on GA-MLP best chromosome...")
+    cv10 = ten_fold_cv_mlp(best, X_train, y_train, X_test, y_test)
+    results.update(cv10)
+    print(f"\n[10-fold CV] Accuracy: {cv10['cv10_accuracy_mean']:.4f} +/- {cv10['cv10_accuracy_std']:.4f}")
+    print(f"[10-fold CV] F1:       {cv10['cv10_f1_mean']:.4f} +/- {cv10['cv10_f1_std']:.4f}")
+    print(f"[10-fold CV] AUC:      {cv10['cv10_auc_mean']:.4f} +/- {cv10['cv10_auc_std']:.4f}")
 
     # Plots
     comparison_plot(baseline, ga_svm, results, feature_names, mask,
