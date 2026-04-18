@@ -73,15 +73,15 @@ def download_dataset() -> pd.DataFrame:
 
 
 def inspect(df: pd.DataFrame) -> None:
-    print("\n── Shape ──────────────────────────")
+    print("\n-- Shape ----------------------------------")
     print(df.shape)
-    print("\n── Dtypes ─────────────────────────")
+    print("\n-- Dtypes ---------------------------------")
     print(df.dtypes)
-    print("\n── Missing values ─────────────────")
+    print("\n-- Missing values -------------------------")
     print(df.isnull().sum())
-    print("\n── Class distribution ─────────────")
+    print("\n-- Class distribution ---------------------")
     print(df["target"].value_counts())
-    print("\n── Descriptive stats ──────────────")
+    print("\n-- Descriptive stats ----------------------")
     print(df.describe())
 
 
@@ -131,7 +131,8 @@ def preprocess(df: pd.DataFrame):
 
 
 def save_artifacts(X_train, X_test, y_train, y_test, scaler, feature_cols):
-    out = DATA_DIR
+    out = Path(__file__).parent / "data"
+    out.mkdir(exist_ok=True)
     np.save(out / "X_train.npy", X_train)
     np.save(out / "X_test.npy",  X_test)
     np.save(out / "y_train.npy", y_train)

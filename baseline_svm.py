@@ -53,7 +53,7 @@ def evaluate(clf, X_test, y_test, label="Baseline SVM"):
     cm      = confusion_matrix(y_test, y_pred)
     report  = classification_report(y_test, y_pred, output_dict=True)
 
-    print(f"\n── {label} ──────────────────────────")
+    print(f"\n-- {label} ----------------------------------")
     print(f"  Accuracy : {acc:.4f}")
     print(f"  F1 Score : {f1:.4f}")
     print(f"  AUC-ROC  : {auc:.4f}")
@@ -84,7 +84,7 @@ def plot_confusion_matrix(cm, label, path):
     plt.tight_layout()
     plt.savefig(path, dpi=150)
     plt.close()
-    print(f"[plot] Saved confusion matrix → {path}")
+    print(f"[plot] Saved confusion matrix -> {path}")
 
 
 def plot_roc(fpr, tpr, auc_val, label, path):
@@ -98,7 +98,7 @@ def plot_roc(fpr, tpr, auc_val, label, path):
     plt.tight_layout()
     plt.savefig(path, dpi=150)
     plt.close()
-    print(f"[plot] Saved ROC curve → {path}")
+    print(f"[plot] Saved ROC curve -> {path}")
 
 
 def cross_validate(clf_params, X_train, y_train, cv=5):
