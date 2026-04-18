@@ -103,7 +103,7 @@ def get_meta():
 @app.get("/api/gpu-info")
 def gpu_info():
     try:
-        from backend.models.cuda_accelerator import GPU_INFO
+        from cuda_accelerator import GPU_INFO
         return GPU_INFO
     except Exception:
         return {"cuda_available": False, "cuml_available": False,
@@ -118,20 +118,6 @@ def get_baseline():
 @app.get("/api/results/gasvm")
 def get_gasvm():
     return load_json(RESULTS_DIR / "ga_svm_results.json")
-
-
-@app.get("/api/results/gamlp")
-def get_gamlp():
-    data = load_json(RESULTS_DIR / "ga_mlp_results.json")
-    return data.get("results", {})
-
-
-@app.get("/api/results/gamlp-history")
-def get_gamlp_history():
-    data = load_json(RESULTS_DIR / "ga_mlp_results.json")
-    return {"history": data.get("history", []),
-            "best_chromosome": data.get("best_chromosome", {}),
-            "config": data.get("config", {})}
 
 
 @app.get("/api/results/ga-history")
@@ -179,24 +165,9 @@ def get_comparison():
             "C":             gasvm.get("C"),
             "gamma":         gasvm.get("gamma"),
         },
-        "ga_history":    history,
-        "feature_names": meta.get("feature_names", []),
+        "ga_history":      history,
+        "feature_names":   meta.get("feature_names", []),
         "best_chromosome": best_chr,
-        "gamlp": {
-            "accuracy":     gamlp_res.get("accuracy"),
-            "f1":           gamlp_res.get("f1"),
-            "auc":          gamlp_res.get("auc"),
-            "n_features":   gamlp_res.get("n_features_used"),
-            "train_time_s": gamlp_res.get("train_time_s"),
-            "cm":           gamlp_res.get("cm"),
-            "roc":          gamlp_res.get("roc"),
-            "feature_mask": gamlp_res.get("feature_mask"),
-            "lr":           gamlp_res.get("lr"),
-            "hidden_size":  gamlp_res.get("hidden_size"),
-            "depth":        gamlp_res.get("depth"),
-            "dropout":      gamlp_res.get("dropout"),
-            "device":       gamlp_res.get("device"),
-        } if gamlp_res else None,
     }
 
 
@@ -259,8 +230,7 @@ async def train_baseline_api(background_tasks: BackgroundTasks):
     """Trigger baseline SVM training in the background."""
     def _run():
         import subprocess, sys
-        subprocess.run([sys.executable, "-m",
-                        "backend.models.baseline_svm"], check=True)
+        subprocess.run([sys.executable, str(Path(__file__).parent / "baseline_svm.py")], check=True)
     background_tasks.add_task(_run)
     return {"status": "started", "message": "Baseline SVM training launched."}
 
@@ -272,18 +242,19 @@ async def train_ga_api(cfg: GATrainConfig):
     Frontend receives live generation updates.
     """
     async def event_stream():
-        import sys, os
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from backend.models.genetic_algorithm import GeneticAlgorithm, GAConfig
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        from genetic_algorithm import GeneticAlgorithm, GAConfig
 
         X_train = np.load(DATA_DIR / "X_train.npy")
         y_train = np.load(DATA_DIR / "y_train.npy")
 
         ga_cfg = GAConfig(
-            pop_size      = cfg.pop_size,
-            n_generations = cfg.n_generations,
-            mutation_rate = cfg.mutation_rate,
-            crossover_rate= cfg.crossover_rate,
+            pop_size       = cfg.pop_size,
+            n_generations  = cfg.n_generations,
+            mutation_rate  = cfg.mutation_rate,
+            crossover_rate = cfg.crossover_rate,
+            evaluator_mode = "auto" if cfg.use_gpu else "cpu",
         )
         ga = GeneticAlgorithm(ga_cfg)
 

@@ -41,10 +41,10 @@ export default function Dashboard() {
       {cmp ? (
         <>
           <div className="metric-grid">
-            <MetricCard label="GA-SVM Accuracy"  value={pct(cmp.gasvm?.accuracy)}  sub={delta(cmp.gasvm?.accuracy, cmp.baseline?.accuracy, 'vs baseline')} color="accent" />
-            <MetricCard label="GA-SVM F1 Score"  value={pct(cmp.gasvm?.f1)}        sub={delta(cmp.gasvm?.f1, cmp.baseline?.f1)} color="green" />
-            <MetricCard label="GA-MLP Accuracy"  value={pct(cmp.gamlp?.accuracy)}  sub={delta(cmp.gamlp?.accuracy, cmp.baseline?.accuracy, 'vs baseline')} color="blue" />
-            <MetricCard label="GA-MLP F1 Score"  value={pct(cmp.gamlp?.f1)}        sub={cmp.gamlp ? `${cmp.gamlp.depth} layers x ${cmp.gamlp.hidden_size} units` : 'not trained'} />
+            <MetricCard label="GA-SVM Accuracy" value={pct(cmp.gasvm?.accuracy)} sub={delta(cmp.gasvm?.accuracy, cmp.baseline?.accuracy, 'vs baseline')} color="accent" />
+            <MetricCard label="GA-SVM F1 Score" value={pct(cmp.gasvm?.f1)}       sub={delta(cmp.gasvm?.f1, cmp.baseline?.f1)} color="green" />
+            <MetricCard label="AUC-ROC"         value={fmt4(cmp.gasvm?.auc)}      sub={delta(cmp.gasvm?.auc, cmp.baseline?.auc)} color="blue" />
+            <MetricCard label="Features Selected" value={`${cmp.gasvm?.n_features}/13`} sub="by genetic algorithm" />
           </div>
 
           <div className="grid-2" style={{ gap: 16 }}>
@@ -52,33 +52,39 @@ export default function Dashboard() {
               <div className="card-title">Model comparison</div>
               <table className="tbl">
                 <thead>
-                  <tr>
-                    <th>Metric</th>
-                    <th>Baseline SVM</th>
-                    <th>GA-SVM</th>
-                    {cmp.gamlp && <th style={{ color: '#55A868' }}>GA-MLP</th>}
-                  </tr>
+                  <tr><th>Metric</th><th>Baseline SVM</th><th>GA-SVM</th><th>Delta</th></tr>
                 </thead>
                 <tbody>
-                  {[['Accuracy', 'accuracy'], ['F1 Score', 'f1'], ['AUC-ROC', 'auc']].map(([label, key]) => (
-                    <tr key={key}>
-                      <td>{label}</td>
-                      <td style={{ fontFamily: 'Space Mono, monospace' }}>{fmt4(cmp.baseline?.[key])}</td>
-                      <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)' }}>{fmt4(cmp.gasvm?.[key])}</td>
-                      {cmp.gamlp && <td style={{ fontFamily: 'Space Mono, monospace', color: '#55A868' }}>{fmt4(cmp.gamlp?.[key])}</td>}
-                    </tr>
-                  ))}
+                  {[['Accuracy', 'accuracy'], ['F1 Score', 'f1'], ['AUC-ROC', 'auc']].map(([label, key]) => {
+                    const diff = (cmp.gasvm?.[key] - cmp.baseline?.[key])
+                    return (
+                      <tr key={key}>
+                        <td>{label}</td>
+                        <td style={{ fontFamily: 'Space Mono, monospace' }}>{fmt4(cmp.baseline?.[key])}</td>
+                        <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)' }}>{fmt4(cmp.gasvm?.[key])}</td>
+                        <td style={{ color: diff >= 0 ? 'var(--success)' : 'var(--danger)', fontFamily: 'Space Mono, monospace' }}>
+                          {diff >= 0 ? '+' : ''}{fmt4(diff)}
+                        </td>
+                      </tr>
+                    )
+                  })}
                   <tr>
                     <td>Features used</td>
                     <td style={{ fontFamily: 'Space Mono, monospace' }}>13 / 13</td>
                     <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)' }}>{cmp.gasvm?.n_features} / 13</td>
-                    {cmp.gamlp && <td style={{ fontFamily: 'Space Mono, monospace', color: '#55A868' }}>{cmp.gamlp?.n_features} / 13</td>}
+                    <td style={{ color: 'var(--success)', fontFamily: 'Space Mono, monospace' }}>-{13 - cmp.gasvm?.n_features}</td>
                   </tr>
                   <tr>
-                    <td>Device</td>
-                    <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>CPU</td>
-                    <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>CPU</td>
-                    {cmp.gamlp && <td style={{ fontFamily: 'Space Mono, monospace', color: cmp.gamlp?.device?.includes('cuda') ? 'var(--success)' : 'var(--muted)' }}>{cmp.gamlp?.device ?? 'CPU'}</td>}
+                    <td>Optimized C</td>
+                    <td style={{ fontFamily: 'Space Mono, monospace' }}>1.0</td>
+                    <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)' }}>{cmp.gasvm?.C}</td>
+                    <td>-</td>
+                  </tr>
+                  <tr>
+                    <td>Optimized gamma</td>
+                    <td style={{ fontFamily: 'Space Mono, monospace' }}>scale</td>
+                    <td style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)' }}>{cmp.gasvm?.gamma}</td>
+                    <td>-</td>
                   </tr>
                 </tbody>
               </table>
