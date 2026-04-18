@@ -64,7 +64,7 @@ def evaluate(clf, mask, X_test, y_test):
     auc  = roc_auc_score(y_test, y_prob)
     cm   = confusion_matrix(y_test, y_pred)
 
-    print("\n── GA-SVM Evaluation ──────────────")
+    print("\n-- GA-SVM Evaluation ----------------------------------")
     print(f"  Accuracy : {acc:.4f}")
     print(f"  F1 Score : {f1:.4f}")
     print(f"  AUC-ROC  : {auc:.4f}")
@@ -82,7 +82,30 @@ def evaluate(clf, mask, X_test, y_test):
     }
 
 
-def comparison_plot(baseline, gasvm, feature_names, mask, out_path):
+def ten_fold_cv(mask, C, gamma, X_train, y_train, X_test, y_test):
+    """Fix 4: 10-fold stratified CV on full dataset for final reported numbers."""
+    from sklearn.model_selection import StratifiedKFold
+    X_full = np.concatenate([X_train, X_test])[:, mask]
+    y_full = np.concatenate([y_train, y_test])
+    clf    = SVC(kernel="rbf", C=C, gamma=gamma, probability=True, random_state=42)
+    skf    = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+    acc_s, f1_s, auc_s = [], [], []
+    for tr, vl in skf.split(X_full, y_full):
+        clf.fit(X_full[tr], y_full[tr])
+        yp = clf.predict(X_full[vl])
+        yb = clf.predict_proba(X_full[vl])[:, 1]
+        acc_s.append(accuracy_score(y_full[vl], yp))
+        f1_s.append(f1_score(y_full[vl], yp, zero_division=0))
+        auc_s.append(roc_auc_score(y_full[vl], yb))
+    return {
+        "cv10_accuracy_mean": round(float(np.mean(acc_s)), 4),
+        "cv10_accuracy_std":  round(float(np.std(acc_s, ddof=1)), 4),
+        "cv10_f1_mean":       round(float(np.mean(f1_s)), 4),
+        "cv10_f1_std":        round(float(np.std(f1_s, ddof=1)), 4),
+        "cv10_auc_mean":      round(float(np.mean(auc_s)), 4),
+        "cv10_auc_std":       round(float(np.std(auc_s, ddof=1)), 4),
+        "cv10_scores":        {"accuracy": acc_s, "f1": f1_s, "auc": auc_s},
+    }
     """4-panel comparison figure."""
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle("GA-SVM vs Baseline SVM — Comparison", fontsize=14, fontweight="bold")
@@ -152,6 +175,13 @@ if __name__ == "__main__":
     results["C"]              = best_chr["C"]
     results["gamma"]          = best_chr["gamma"]
     results["ga_fitness"]     = best_chr["fitness"]
+
+    # Fix 4: 10-fold CV for paper-quality numbers
+    cv10 = ten_fold_cv(mask, best_chr["C"], best_chr["gamma"], X_train, y_train, X_test, y_test)
+    results.update(cv10)
+    print(f"\n[10-fold CV] Accuracy: {cv10['cv10_accuracy_mean']:.4f} +/- {cv10['cv10_accuracy_std']:.4f}")
+    print(f"[10-fold CV] F1:       {cv10['cv10_f1_mean']:.4f} +/- {cv10['cv10_f1_std']:.4f}")
+    print(f"[10-fold CV] AUC:      {cv10['cv10_auc_mean']:.4f} +/- {cv10['cv10_auc_std']:.4f}")
 
     # Side-by-side print
     print("\n── Head-to-head ────────────────────────────────────")
